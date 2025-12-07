@@ -42,9 +42,10 @@
    - `sell preview --asset-id bitcoin --quantity 0.25` — расчет сделки (`POST /crypto/sell/preview`).
    - `sell execute --asset-id bitcoin --quantity 0.25` — исполнение сделки (`POST /crypto/sell`). Флаг `--skip-preview` отключает предварительный шаг, но по умолчанию предпросмотр выводится вместе с подтверждением.
 5. **Продажа по команде с телефона.** Запустите `python -m kursach_desktop poll`. `CommandPoller` из `poller.py` каждые `poll_interval_seconds` (5) секунд запрашивает `GET /crypto/device-commands/poll`, печатает каждую команду и передает ее в `DeviceCommandDispatcher`. Поддерживаемые действия:
-   - `LOGIN_ON_DESKTOP` — сохранить токен, присланный мобильным клиентом.
-   - `OPEN_DESKTOP_DASHBOARD` — вывести дашборд и данные для продажи, чтобы дизайнеры видели живой payload.
-   - `EXECUTE_DESKTOP_SELL` — выполнить продажу: предпросмотр, запрос подтверждения (или авто-подтверждение, если включен `auto_confirm_sales` или передан флаг `--auto-confirm`), затем `POST /crypto/sell`.
+   - `LOGIN_ON_DESKTOP` - сохранить токен, присланный мобильным клиентом.
+   - `OPEN_DESKTOP_DASHBOARD` - вывести дашборд и данные для продажи, чтобы дизайнеры видели живой payload.
+   - `REQUEST_DESKTOP_SELL` - интерактивно провести продажу: CLI покажет все ликвидные активы, попросит выбрать валюту, объем/сумму и источник цены, выведет предпросмотр и выполнит сделку после подтверждения.
+   - `EXECUTE_DESKTOP_SELL` - выполнить продажу: предпросмотр, запрос подтверждения (или авто-подтверждение, если включен `auto_confirm_sales` или передан флаг `--auto-confirm`), затем `POST /crypto/sell`.
 6. **Подтверждение команд.** После выполнения отправляем `POST /crypto/device-commands/{id}/ack` со статусом `ACKNOWLEDGED`. При ошибке (`CommandError` или `ApiError`) статус `FAILED`, что видно в консоли и логах.
 
 
