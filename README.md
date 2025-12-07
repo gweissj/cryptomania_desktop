@@ -51,11 +51,11 @@
 ## Быстрый старт
 
 ```powershell
-cd desktop
+cd ../kursach_desktop
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
-copy config.json config.local.json 
+copy config.example.json config.json
 python -m kursach_desktop status
 python -m kursach_desktop login
 python -m kursach_desktop poll
