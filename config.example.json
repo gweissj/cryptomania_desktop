@@ -1,0 +1,8 @@
+{
+  "api_base_url": "http://127.0.0.1:8000",
+  "target_device": "desktop",
+  "device_id": "pc-cli-001",
+  "poll_interval_seconds": 5,
+  "auto_confirm_sales": false,
+  "verify_ssl": false
+}
