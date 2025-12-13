@@ -1,12 +1,13 @@
-// src/pages/Wallet.jsx
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { useNavigate } from "react-router-dom";
 
 export default function Wallet() {
   const [data, setData] = useState(null);
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const navigate = useNavigate();
 
   const load = async () => {
     setError("");
@@ -43,9 +44,6 @@ export default function Wallet() {
 
   const totalPnl = Number(data.total_pnl ?? 0);
   const totalPnlPct = Number(data.total_pnl_pct ?? 0);
-  const dayChange = Number(data.day_change ?? 0);
-  const dayChangePct = Number(data.day_change_pct ?? 0);
-
   const pnlChipClass =
     totalPnlPct >= 0
       ? "bg-green-100 text-green-700"
@@ -62,7 +60,7 @@ export default function Wallet() {
         )}
       </div>
 
-      {/* Баланс */}
+      {/* Баланс портфеля */}
       <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <p className="text-gray-500">Portfolio Balance</p>
@@ -76,22 +74,6 @@ export default function Wallet() {
           <p className="text-sm text-gray-500 mt-2">
             Holdings: ${data.holdings_balance?.toLocaleString()} · Cash: $
             {data.cash_balance?.toLocaleString()}
-          </p>
-          <p className="text-xs text-gray-500 mt-1">
-            24h:{" "}
-            <span
-              className={
-                dayChangePct >= 0 ? "text-green-600" : "text-red-600"
-              }
-            >
-              {dayChangePct >= 0 ? "+" : ""}
-              {dayChangePct.toFixed(2)}% (
-              {dayChange >= 0 ? "+" : "-"}$
-              {Math.abs(dayChange).toLocaleString(undefined, {
-                maximumFractionDigits: 2,
-              })}
-              )
-            </span>
           </p>
         </div>
         <div
@@ -132,7 +114,7 @@ export default function Wallet() {
         </div>
       </div>
 
-      {/* Holdings */}
+      {/* Holdings: PnL vs внесённой суммы */}
       <div className="space-y-3 pb-10">
         <h3 className="font-semibold text-gray-800">Holdings</h3>
         {data.portfolio.length === 0 ? (
@@ -140,40 +122,50 @@ export default function Wallet() {
             You have no assets yet. Use Trade page to buy crypto.
           </p>
         ) : (
-          data.portfolio.map((asset) => (
-            <div
-              key={asset.id}
-              className="bg-white rounded-2xl p-4 flex items-center justify-between shadow-sm border border-gray-100"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-indigo-50 flex items-center justify-center font-semibold text-indigo-700">
-                  {asset.symbol?.[0]}
-                </div>
-                <div>
-                  <div className="font-semibold text-sm">{asset.name}</div>
-                  <div className="text-xs text-gray-500">
-                    {asset.symbol?.toUpperCase()} · {asset.quantity} pcs
+          data.portfolio.map((asset) => {
+            const pnl = Number(asset.pnl ?? 0);
+            const pnlPct = Number(asset.pnl_pct ?? 0);
+            const pnlClass =
+              pnlPct >= 0 ? "text-green-500" : "text-red-500";
+
+            return (
+              <button
+                key={asset.id}
+                onClick={() =>
+                  navigate("/trade", { state: { assetId: asset.id } })
+                }
+                className="w-full bg-white rounded-2xl p-4 flex items-center justify-between shadow-sm border border-gray-100 hover:bg-gray-50 text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-indigo-50 flex items-center justify-center font-semibold text-indigo-700">
+                    {asset.symbol?.[0]}
+                  </div>
+                  <div>
+                    <div className="font-semibold text-sm">
+                      {asset.name}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {asset.symbol?.toUpperCase()} · {asset.quantity} pcs
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="text-right">
-                <div className="font-semibold">
-                  ${asset.value?.toLocaleString()}
+                <div className="text-right">
+                  <div className="font-semibold">
+                    ${asset.value?.toLocaleString()}
+                  </div>
+                  <div className={"text-xs " + pnlClass}>
+                    {pnlPct >= 0 ? "+" : ""}
+                    {pnlPct.toFixed(2)}% (
+                    {pnl >= 0 ? "+" : "-"}$
+                    {Math.abs(pnl).toLocaleString(undefined, {
+                      maximumFractionDigits: 2,
+                    })}
+                    )
+                  </div>
                 </div>
-                <div
-                  className={
-                    "text-xs " +
-                    (asset.change_24h_pct >= 0
-                      ? "text-green-500"
-                      : "text-red-500")
-                  }
-                >
-                  {asset.change_24h_pct >= 0 ? "+" : ""}
-                  {asset.change_24h_pct.toFixed(2)}%
-                </div>
-              </div>
-            </div>
-          ))
+              </button>
+            );
+          })
         )}
       </div>
     </div>

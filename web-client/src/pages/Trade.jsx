@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { useLocation } from "react-router-dom";
 
 export default function Trade() {
   const [assets, setAssets] = useState([]);
@@ -12,10 +13,20 @@ export default function Trade() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
+  const location = useLocation();
+  const initialAssetId = location.state?.assetId || null;
+
   const loadAssets = async () => {
     try {
       const data = await api.getAssets({ limit: 30 });
       setAssets(data || []);
+
+      if (initialAssetId && data && data.length > 0) {
+        const initial = data.find((a) => a.id === initialAssetId);
+        if (initial) {
+          await selectAsset(initial);
+        }
+      }
     } catch (e) {
       setError(e.message || "Failed to load assets");
     }
@@ -23,7 +34,7 @@ export default function Trade() {
 
   useEffect(() => {
     loadAssets();
-  }, []);
+  }, [initialAssetId]);
 
   const filtered = assets.filter((a) =>
     (a.name + a.symbol).toLowerCase().includes(search.toLowerCase())
@@ -108,7 +119,10 @@ export default function Trade() {
               </div>
               <div className="text-right">
                 <div className="font-semibold text-sm">
-                  ${asset.current_price?.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                  $
+                  {asset.current_price?.toLocaleString(undefined, {
+                    maximumFractionDigits: 2,
+                  })}
                 </div>
                 <div
                   className={
@@ -158,7 +172,9 @@ export default function Trade() {
                     : "Alternative price source"}
                 </p>
                 <p className="text-lg font-bold mt-2">
-                  ${q.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                  ${q.price.toLocaleString(undefined, {
+                    maximumFractionDigits: 2,
+                  })}
                 </p>
               </button>
             ))}

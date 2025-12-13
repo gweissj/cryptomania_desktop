@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { RefreshCw } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
@@ -9,8 +9,9 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const navigate = useNavigate();
+  const timerRef = useRef(null);
 
-  const loadData = async () => {
+  const fetchData = async () => {
     setLoading(true);
     setError("");
     try {
@@ -25,8 +26,27 @@ export default function Dashboard() {
     }
   };
 
+  const scheduleNext = () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+    }
+    timerRef.current = setTimeout(() => {
+      loadData();
+    }, 30000);
+  };
+
+  const loadData = async () => {
+    await fetchData();
+    scheduleNext();
+  };
+
   useEffect(() => {
     loadData();
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+    };
   }, []);
 
   if (loading && !dashboard) {
@@ -46,11 +66,8 @@ export default function Dashboard() {
   }
 
   const d = dashboard || {};
-
-  const totalPnl = d.total_pnl ?? 0;
-  const totalPnlPct = d.total_pnl_pct ?? 0;
-  const dayChange = d.day_change ?? 0;
-  const dayChangePct = d.day_change_pct ?? 0;
+  const totalPnl = Number(d.total_pnl ?? 0);
+  const totalPnlPct = Number(d.total_pnl_pct ?? 0);
 
   const pnlChipClass =
     totalPnlPct >= 0
@@ -59,7 +76,7 @@ export default function Dashboard() {
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
-      {/* Заголовок + refresh */}
+      {/* Заголовок + ручной refresh */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
         <button
@@ -71,7 +88,7 @@ export default function Dashboard() {
         </button>
       </div>
 
-      {/* Карточка баланса */}
+      {/* Баланс портфеля */}
       <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 md:p-8">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
@@ -84,7 +101,6 @@ export default function Dashboard() {
                   maximumFractionDigits: 2,
                 }) ?? "0.00"}
               </span>
-              {/* общий PnL относительно всех депозитов */}
               <span
                 className={
                   "px-3 py-1 rounded-full text-sm font-semibold " +
@@ -106,26 +122,8 @@ export default function Dashboard() {
               </span>
               <span>Cash: ${d.cash_balance?.toLocaleString() ?? 0}</span>
             </div>
-            {/* изменение за последние 24 часа */}
-            <div className="mt-1 text-xs text-gray-500">
-              24h:{" "}
-              <span
-                className={
-                  dayChangePct >= 0 ? "text-green-600" : "text-red-600"
-                }
-              >
-                {dayChangePct >= 0 ? "+" : ""}
-                {dayChangePct.toFixed(2)}% (
-                {dayChange >= 0 ? "+" : "-"}$
-                {Math.abs(dayChange).toLocaleString(undefined, {
-                  maximumFractionDigits: 2,
-                })}
-                )
-              </span>
-            </div>
           </div>
 
-          {/* Кнопки перехода */}
           <div className="flex gap-2">
             <button
               onClick={() => navigate("/trade")}
@@ -164,6 +162,9 @@ export default function Dashboard() {
             {marketMovers.slice(0, 4).map((asset, idx) => (
               <div
                 key={asset.id}
+                onClick={() =>
+                  navigate("/trade", { state: { assetId: asset.id } })
+                }
                 className={`rounded-3xl p-5 text-white shadow-lg cursor-pointer transition transform hover:scale-[1.01]
                 ${
                   idx % 2 === 0
@@ -211,7 +212,7 @@ export default function Dashboard() {
         )}
       </section>
 
-      {/* Portfolio */}
+      {/* Portfolio — PnL по каждой монете vs внесённая сумма */}
       <section className="space-y-3 pb-10">
         <h2 className="text-xl font-bold text-gray-900">Portfolio</h2>
 
@@ -223,52 +224,54 @@ export default function Dashboard() {
             <div className="mt-2">
               You have not purchased any crypto yet.
             </div>
-            {d.last_updated && (
-              <div className="mt-4 text-xs text-gray-400">
-                Updated at{" "}
-                {new Date(d.last_updated).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </div>
-            )}
           </div>
         ) : (
           <div className="space-y-2">
-            {d.portfolio.map((asset) => (
-              <div
-                key={asset.id}
-                className="bg-white rounded-2xl p-4 flex items-center justify-between shadow-sm border border-gray-100"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full bg-indigo-50 flex items-center justify-center font-semibold text-indigo-700">
-                    {asset.symbol?.[0]}
-                  </div>
-                  <div>
-                    <div className="font-semibold text-sm">{asset.name}</div>
-                    <div className="text-xs text-gray-500">
-                      {asset.symbol?.toUpperCase()} · {asset.quantity} pcs
+            {d.portfolio.map((asset) => {
+              const pnl = Number(asset.pnl ?? 0);
+              const pnlPct = Number(asset.pnl_pct ?? 0);
+              const pnlClass =
+                pnlPct >= 0 ? "text-green-500" : "text-red-500";
+
+              return (
+                <button
+                  key={asset.id}
+                  onClick={() =>
+                    navigate("/trade", { state: { assetId: asset.id } })
+                  }
+                  className="w-full bg-white rounded-2xl p-4 flex items-center justify-between shadow-sm border border-gray-100 hover:bg-gray-50 text-left"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-full bg-indigo-50 flex items-center justify-center font-semibold text-indigo-700">
+                      {asset.symbol?.[0]}
+                    </div>
+                    <div>
+                      <div className="font-semibold text-sm">
+                        {asset.name}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {asset.symbol?.toUpperCase()} ·{" "}
+                        {asset.quantity} pcs
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div className="text-right">
-                  <div className="font-semibold text-sm">
-                    ${asset.value?.toLocaleString()}
+                  <div className="text-right">
+                    <div className="font-semibold text-sm">
+                      ${asset.value?.toLocaleString()}
+                    </div>
+                    <div className={"text-xs " + pnlClass}>
+                      {pnlPct >= 0 ? "+" : ""}
+                      {pnlPct.toFixed(2)}% (
+                      {pnl >= 0 ? "+" : "-"}$
+                      {Math.abs(pnl).toLocaleString(undefined, {
+                        maximumFractionDigits: 2,
+                      })}
+                      )
+                    </div>
                   </div>
-                  <div
-                    className={
-                      "text-xs " +
-                      (asset.change_24h_pct >= 0
-                        ? "text-green-500"
-                        : "text-red-500")
-                    }
-                  >
-                    {asset.change_24h_pct >= 0 ? "+" : ""}
-                    {asset.change_24h_pct.toFixed(2)}%
-                  </div>
-                </div>
-              </div>
-            ))}
+                </button>
+              );
+            })}
           </div>
         )}
       </section>
