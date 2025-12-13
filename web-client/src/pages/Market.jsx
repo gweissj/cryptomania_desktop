@@ -33,14 +33,6 @@ export default function Market() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
-      <div className="flex items-center gap-3 mb-2">
-        <button
-          onClick={() => navigate(-1)}
-          className="text-sm text-gray-500 hover:text-gray-800"
-        >
-          ← Back
-        </button>
-      </div>
       <h1 className="text-2xl font-bold text-gray-900 mb-2">
         Market Movers
       </h1>
@@ -70,9 +62,12 @@ export default function Market() {
 
       <div className="space-y-3">
         {assets.map((asset) => (
-          <div
+          <button
             key={asset.id}
-            className="bg-white rounded-2xl px-4 py-3 flex items-center justify-between shadow-sm border border-gray-100"
+            onClick={() =>
+              navigate("/trade", { state: { assetId: asset.id } })
+            }
+            className="w-full bg-white rounded-2xl px-4 py-3 flex items-center justify-between shadow-sm border border-gray-100 hover:bg-gray-50 text-left"
           >
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center font-semibold text-indigo-700">
@@ -110,7 +105,7 @@ export default function Market() {
                 {asset.change_24h_pct.toFixed(2)}%
               </div>
             </div>
-          </div>
+          </button>
         ))}
       </div>
     </div>
