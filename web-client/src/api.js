@@ -187,4 +187,34 @@ export const api = {
     );
     return handleResponse(response);
   },
+
+  pollDeviceCommands: async ({
+    target_device = "desktop",
+    target_device_id,
+    limit = 10,
+  } = {}) => {
+    const params = new URLSearchParams();
+    params.set("target_device", target_device);
+    params.set("limit", String(limit));
+    if (target_device_id) {
+      params.set("target_device_id", target_device_id);
+    }
+    const response = await fetch(
+      `${BASE_URL}/crypto/device-commands/poll?${params.toString()}`,
+      { headers: getHeaders() }
+    );
+    return handleResponse(response);
+  },
+
+  acknowledgeDeviceCommand: async (command_id, status) => {
+    const response = await fetch(
+      `${BASE_URL}/crypto/device-commands/${command_id}/ack`,
+      {
+        method: "POST",
+        headers: getHeaders(),
+        body: JSON.stringify({ status }),
+      }
+    );
+    return handleResponse(response);
+  },
 };

@@ -13,11 +13,13 @@ import Dashboard from "./pages/Dashboard";
 import Wallet from "./pages/Wallet";
 import Market from "./pages/Market";
 import Trade from "./pages/Trade";
+import Sell from "./pages/Sell";
 import {
   LayoutDashboard,
   Wallet as WalletIcon,
   LineChart,
   ArrowRightLeft,
+  Coins,
   LogOut,
 } from "lucide-react";
 import { api } from "./api";
@@ -67,6 +69,7 @@ function Layout({ children }) {
         <div className="hidden md:flex items-center gap-6">
           <HeaderNavLink to="/" label="Home" />
           <HeaderNavLink to="/trade" label="Trade" />
+          <HeaderNavLink to="/sell" label="Sell" />
           <HeaderNavLink to="/market" label="Market" />
           <HeaderNavLink to="/wallet" label="Wallet" />
           <button
@@ -100,6 +103,7 @@ function Layout({ children }) {
           icon={<ArrowRightLeft size={22} />}
           label="Trade"
         />
+        <BottomNavItem to="/sell" icon={<Coins size={22} />} label="Sell" />
         <BottomNavItem
           to="/market"
           icon={<LineChart size={22} />}
@@ -165,6 +169,14 @@ function AppLayout() {
           element={
             <PrivateRoute>
               <Trade />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/sell"
+          element={
+            <PrivateRoute>
+              <Sell />
             </PrivateRoute>
           }
         />
