@@ -1,4 +1,4 @@
-const BASE_URL = "http://127.0.0.1:8000";
+const BASE_URL = "http://87.103.203.138:26608";
 
 const getHeaders = () => {
   const token = localStorage.getItem("access_token");
@@ -14,8 +14,8 @@ const handleResponse = async (response) => {
   try {
     data = await response.json();
   } catch {
+    data = null;
   }
-
   if (!response.ok) {
     if (response.status === 401) {
       localStorage.removeItem("access_token");
@@ -32,11 +32,13 @@ const handleResponse = async (response) => {
 };
 
 export const api = {
-
   register: async ({ email, password, first_name, last_name, birth_date }) => {
     const response = await fetch(`${BASE_URL}/auth/register`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
       body: JSON.stringify({
         email,
         password,
@@ -51,7 +53,10 @@ export const api = {
   login: async (email, password) => {
     const response = await fetch(`${BASE_URL}/auth/login`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
       body: JSON.stringify({ email, password }),
     });
     const data = await handleResponse(response);
@@ -122,6 +127,15 @@ export const api = {
     return handleResponse(response);
   },
 
+  withdraw: async (amount) => {
+    const response = await fetch(`${BASE_URL}/crypto/withdraw`, {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify({ amount: parseFloat(amount) }),
+    });
+    return handleResponse(response);
+  },
+
   buyAsset: async ({ asset_id, amount_usd, source = "coincap" }) => {
     const response = await fetch(`${BASE_URL}/crypto/buy`, {
       method: "POST",
@@ -144,8 +158,8 @@ export const api = {
 
   previewSell: async ({ asset_id, quantity, amount_usd, source = "coincap" }) => {
     const body = { asset_id, source };
-    if (quantity) body.quantity = parseFloat(quantity);
-    if (amount_usd) body.amount_usd = parseFloat(amount_usd);
+    if (quantity != null) body.quantity = parseFloat(quantity);
+    if (amount_usd != null) body.amount_usd = parseFloat(amount_usd);
     const response = await fetch(`${BASE_URL}/crypto/sell/preview`, {
       method: "POST",
       headers: getHeaders(),
@@ -156,13 +170,21 @@ export const api = {
 
   executeSell: async ({ asset_id, quantity, amount_usd, source = "coincap" }) => {
     const body = { asset_id, source };
-    if (quantity) body.quantity = parseFloat(quantity);
-    if (amount_usd) body.amount_usd = parseFloat(amount_usd);
+    if (quantity != null) body.quantity = parseFloat(quantity);
+    if (amount_usd != null) body.amount_usd = parseFloat(amount_usd);
     const response = await fetch(`${BASE_URL}/crypto/sell`, {
       method: "POST",
       headers: getHeaders(),
       body: JSON.stringify(body),
     });
+    return handleResponse(response);
+  },
+
+  getHistory: async (asset_id, days = 1) => {
+    const response = await fetch(
+      `${BASE_URL}/crypto/history/${asset_id}?days=${days}`,
+      { headers: getHeaders() }
+    );
     return handleResponse(response);
   },
 };

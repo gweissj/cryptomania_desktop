@@ -1,6 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { useLocation } from "react-router-dom";
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+} from "recharts";
+import Sparkline from "../components/Sparkline";
+import { createPortal } from "react-dom";
 
 export default function Trade() {
   const [mode, setMode] = useState("buy");
@@ -31,8 +41,48 @@ export default function Trade() {
   const [confirmCountdown, setConfirmCountdown] = useState(5);
   const confirmTimerRef = useRef(null);
 
+  const [historyData, setHistoryData] = useState([]);
+  const [historyRange, setHistoryRange] = useState(1);
+  const [historyError, setHistoryError] = useState("");
+  const [historyLoading, setHistoryLoading] = useState(false);
+
   const location = useLocation();
   const initialAssetId = location.state?.assetId || null;
+
+  const rangeOptions = [
+    { label: "1D", value: 1 },
+    { label: "7D", value: 7 },
+    { label: "1M", value: 30 },
+    { label: "1Y", value: 365 },
+    { label: "ALL", value: 365 },
+  ];
+
+  const currentAsset = selectedBuy || selectedSell;
+
+  const loadHistory = async (assetId, days) => {
+    if (!assetId) {
+      setHistoryData([]);
+      return;
+    }
+    setHistoryLoading(true);
+    setHistoryError("");
+    try {
+      const res = await api.getHistory(assetId, days);
+      const hist = (res || []).map((p) => ({
+        time: new Date(p.timestamp).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        price: p.price,
+      }));
+      setHistoryData(hist);
+    } catch (e) {
+      setHistoryError(e.message || "Failed to load history");
+      setHistoryData([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -68,8 +118,17 @@ export default function Trade() {
     loadData();
   }, [initialAssetId]);
 
+  useEffect(() => {
+    if (currentAsset) {
+      loadHistory(currentAsset.id, historyRange);
+    } else {
+      setHistoryData([]);
+    }
+  }, [currentAsset, historyRange]);
+
   const selectBuyAsset = async (asset, { silent = false } = {}) => {
     setSelectedBuy(asset);
+    setSelectedSell(null);
     setBuyAmount("");
     if (!silent) {
       setBuyMessage("");
@@ -114,6 +173,7 @@ export default function Trade() {
 
   const selectSellAsset = async (asset) => {
     setSelectedSell(asset);
+    setSelectedBuy(null);
     setSellAmount("");
     setSellMessage("");
     setSellError("");
@@ -173,6 +233,7 @@ export default function Trade() {
     setSellPayload(null);
     if (confirmTimerRef.current) {
       clearInterval(confirmTimerRef.current);
+      confirmTimerRef.current = null;
     }
   };
 
@@ -198,8 +259,8 @@ export default function Trade() {
       );
       if (!stillOwned) {
         setSelectedSell(null);
+        setSellQuotes([]);
       } else {
-        setSelectedSell(stillOwned);
         await selectSellAsset(stillOwned);
       }
     } catch (e) {
@@ -209,6 +270,10 @@ export default function Trade() {
       closeSellConfirm();
     }
   };
+
+  const filteredBuyAssets = assets.filter((a) =>
+    (a.name + a.symbol).toLowerCase().includes(buySearch.toLowerCase())
+  );
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
@@ -241,7 +306,7 @@ export default function Trade() {
 
       {mode === "buy" ? (
         <BuySection
-          assets={assets}
+          assets={filteredBuyAssets}
           buySearch={buySearch}
           setBuySearch={setBuySearch}
           selected={selectedBuy}
@@ -255,6 +320,12 @@ export default function Trade() {
           buyError={buyError}
           selectBuyAsset={selectBuyAsset}
           handleBuy={handleBuy}
+          historyData={historyData}
+          historyRange={historyRange}
+          setHistoryRange={setHistoryRange}
+          historyError={historyError}
+          historyLoading={historyLoading}
+          rangeOptions={rangeOptions}
         />
       ) : (
         <SellSection
@@ -277,8 +348,74 @@ export default function Trade() {
           onConfirm={handleSellConfirmed}
           onCancel={closeSellConfirm}
           sellQuotes={sellQuotes}
+          historyData={historyData}
+          historyRange={historyRange}
+          setHistoryRange={setHistoryRange}
+          historyError={historyError}
+          historyLoading={historyLoading}
+          rangeOptions={rangeOptions}
         />
       )}
+
+      {confirmVisible &&
+        sellPreview &&
+        createPortal(
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+            <div className="bg-white rounded-3xl p-6 w-full max-w-md space-y-4">
+              <h2 className="text-lg font-bold text-gray-900">
+                Confirm sell
+              </h2>
+              <p className="text-sm text-gray-600">
+                Asset:{" "}
+                <span className="font-semibold">
+                  {sellPreview.name} ({sellPreview.symbol})
+                </span>
+              </p>
+              <p className="text-sm text-gray-600">
+                Quantity:{" "}
+                <span className="font-semibold">
+                  {sellPreview.quantity} of {sellPreview.available_quantity}
+                </span>
+              </p>
+              <p className="text-sm text-gray-600">
+                Unit price:{" "}
+                <span className="font-semibold">
+                  ${sellPreview.unit_price.toFixed(2)}
+                </span>
+              </p>
+              <p className="text-sm text-gray-600">
+                You will receive:{" "}
+                <span className="font-semibold text-green-700">
+                  ${sellPreview.proceeds.toFixed(2)}
+                </span>
+              </p>
+              <p className="text-xs text-gray-500">
+                You can confirm in {confirmCountdown} seconds.
+              </p>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={closeSellConfirm}
+                  className="flex-1 py-2 rounded-2xl border border-gray-300 text-gray-700 font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSellConfirmed}
+                  disabled={confirmCountdown > 0 || sellLoading}
+                  className="flex-1 py-2 rounded-2xl bg-red-600 text-white font-semibold disabled:opacity-50"
+                >
+                  {confirmCountdown > 0
+                    ? `Confirm (${confirmCountdown})`
+                    : sellLoading
+                    ? "Processing..."
+                    : "Confirm sell"}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
@@ -299,11 +436,15 @@ function BuySection(props) {
     buyError,
     selectBuyAsset,
     handleBuy,
+    historyData,
+    historyRange,
+    setHistoryRange,
+    historyError,
+    historyLoading,
+    rangeOptions,
   } = props;
 
-  const filtered = assets.filter((a) =>
-    (a.name + a.symbol).toLowerCase().includes(buySearch.toLowerCase())
-  );
+  const sparkData = historyData.map((p) => p.price);
 
   return (
     <div className="space-y-6">
@@ -319,122 +460,140 @@ function BuySection(props) {
           className="w-full mb-4 p-3 rounded-2xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-blue-500"
         />
         <div className="space-y-2 max-h-80 overflow-y-auto">
-          {filtered.map((asset) => (
-            <button
-              key={asset.id}
-              onClick={() => selectBuyAsset(asset)}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl border text-left ${
-                selected?.id === asset.id
-                  ? "bg-indigo-50 border-indigo-200"
-                  : "bg-gray-50 border-gray-100 hover:bg-gray-100"
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center font-semibold text-indigo-700">
-                  {asset.symbol?.[0]}
-                </div>
-                <div>
-                  <div className="font-semibold text-sm">{asset.name}</div>
-                  <div className="text-xs text-gray-500">
-                    {asset.symbol}/USD
+          {assets.map((asset) => {
+            const isSelected = selected?.id === asset.id;
+            const rowSpark = isSelected && sparkData.length ? sparkData : null;
+
+            return (
+              <button
+                key={asset.id}
+                onClick={() => selectBuyAsset(asset)}
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl border text-left ${
+                  isSelected
+                    ? "bg-indigo-50 border-indigo-200"
+                    : "bg-gray-50 border-gray-100 hover:bg-gray-100"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center font-semibold text-indigo-700">
+                    {asset.symbol?.[0]}
+                  </div>
+                  <div>
+                    <div className="font-semibold text-sm">{asset.name}</div>
+                    <div className="text-xs text-gray-500">
+                      {asset.symbol}/USD
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="text-right">
-                <div className="font-semibold text-sm">
-                  $
-                  {asset.current_price?.toLocaleString(undefined, {
-                    maximumFractionDigits: 2,
-                  })}
+                <div className="flex flex-col items-end gap-1">
+                  {rowSpark && <Sparkline data={rowSpark} />}
+                  <div className="font-semibold text-sm">
+                    $
+                    {asset.current_price?.toLocaleString(undefined, {
+                      maximumFractionDigits: 2,
+                    })}
+                  </div>
+                  <div
+                    className={
+                      "text-xs " +
+                      (asset.change_24h_pct >= 0
+                        ? "text-green-500"
+                        : "text-red-500")
+                    }
+                  >
+                    {asset.change_24h_pct >= 0 ? "+" : ""}
+                    {asset.change_24h_pct.toFixed(2)}%
+                  </div>
                 </div>
-                <div
-                  className={
-                    "text-xs " +
-                    (asset.change_24h_pct >= 0
-                      ? "text-green-500"
-                      : "text-red-500")
-                  }
-                >
-                  {asset.change_24h_pct >= 0 ? "+" : ""}
-                  {asset.change_24h_pct.toFixed(2)}%
-                </div>
-              </div>
-            </button>
-          ))}
+              </button>
+            );
+          })}
         </div>
       </div>
 
       {selected && (
-        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 space-y-4">
-          <div className="flex justify-between items-center">
+        <>
+          <PriceHistoryBlock
+            asset={selected}
+            historyData={historyData}
+            historyRange={historyRange}
+            setHistoryRange={setHistoryRange}
+            historyError={historyError}
+            historyLoading={historyLoading}
+            rangeOptions={rangeOptions}
+          />
+
+          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 space-y-4">
+            <div className="flex justify-between items-center">
+              <div>
+                <p className="text-sm text-gray-500">Selected asset</p>
+                <p className="text-lg font-semibold">
+                  {selected.name} ({selected.symbol}/USD)
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {buyQuotes.map((q) => (
+                <button
+                  key={q.source}
+                  onClick={() => setBuySource(q.source)}
+                  className={`rounded-2xl p-3 border text-left ${
+                    buySource === q.source
+                      ? "border-blue-500 bg-blue-50"
+                      : "border-gray-200"
+                  }`}
+                >
+                  <p className="font-semibold uppercase">{q.source}</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {q.source === "coincap"
+                      ? "Cheaper now"
+                      : "Alternative price source"}
+                  </p>
+                  <p className="text-lg font-bold mt-2">
+                    ${q.price.toLocaleString(undefined, {
+                      maximumFractionDigits: 2,
+                    })}
+                  </p>
+                </button>
+              ))}
+            </div>
+
             <div>
-              <p className="text-sm text-gray-500">Selected asset</p>
-              <p className="text-lg font-semibold">
-                {selected.name} ({selected.symbol}/USD)
-              </p>
+              <label className="block text-sm text-gray-500 mb-1">
+                Amount in USD
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={buyAmount}
+                onChange={(e) => setBuyAmount(e.target.value)}
+                className="w-full p-3 rounded-2xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-blue-500"
+              />
             </div>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {buyQuotes.map((q) => (
+            {buyError && (
+              <div className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-2xl">
+                {buyError}
+              </div>
+            )}
+            {buyMessage && (
+              <div className="text-sm text-green-700 bg-green-50 px-3 py-2 rounded-2xl">
+                {buyMessage}
+              </div>
+            )}
+
+            <div className="flex gap-3">
               <button
-                key={q.source}
-                onClick={() => setBuySource(q.source)}
-                className={`rounded-2xl p-3 border text-left ${
-                  buySource === q.source
-                    ? "border-blue-500 bg-blue-50"
-                    : "border-gray-200"
-                }`}
+                onClick={handleBuy}
+                disabled={!buyAmount || buyLoading}
+                className="flex-1 py-3 rounded-2xl bg-indigo-900 text-white font-semibold disabled:opacity-50"
               >
-                <p className="font-semibold uppercase">{q.source}</p>
-                <p className="text-xs text-gray-500 mt-1">
-                  {q.source === "coincap"
-                    ? "Cheaper now"
-                    : "Alternative price source"}
-                </p>
-                <p className="text-lg font-bold mt-2">
-                  ${q.price.toLocaleString(undefined, {
-                    maximumFractionDigits: 2,
-                  })}
-                </p>
+                {buyLoading ? "Processing..." : "Buy now"}
               </button>
-            ))}
-          </div>
-
-          <div>
-            <label className="block text-sm text-gray-500 mb-1">
-              Amount in USD
-            </label>
-            <input
-              type="number"
-              min="0"
-              value={buyAmount}
-              onChange={(e) => setBuyAmount(e.target.value)}
-              className="w-full p-3 rounded-2xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          {buyError && (
-            <div className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-2xl">
-              {buyError}
             </div>
-          )}
-          {buyMessage && (
-            <div className="text-sm text-green-700 bg-green-50 px-3 py-2 rounded-2xl">
-              {buyMessage}
-            </div>
-          )}
-
-          <div className="flex gap-3">
-            <button
-              onClick={handleBuy}
-              disabled={!buyAmount || buyLoading}
-              className="flex-1 py-3 rounded-2xl bg-indigo-900 text-white font-semibold disabled:opacity-50"
-            >
-              {buyLoading ? "Processing..." : "Buy now"}
-            </button>
           </div>
-        </div>
+        </>
       )}
     </div>
   );
@@ -461,7 +620,15 @@ function SellSection(props) {
     onConfirm,
     onCancel,
     sellQuotes,
+    historyData,
+    historyRange,
+    setHistoryRange,
+    historyError,
+    historyLoading,
+    rangeOptions,
   } = props;
+
+  const sparkData = historyData.map((p) => p.price);
 
   return (
     <div className="space-y-6">
@@ -479,17 +646,19 @@ function SellSection(props) {
         ) : (
           <div className="space-y-2 max-h-80 overflow-y-auto">
             {holdings.map((h) => {
+              const isSelected = selected?.id === h.id;
               const pnl = Number(h.unrealized_pnl ?? 0);
               const pnlPct = Number(h.unrealized_pnl_pct ?? 0);
               const pnlClass =
                 pnlPct >= 0 ? "text-green-500" : "text-red-500";
+              const rowSpark = isSelected && sparkData.length ? sparkData : null;
 
               return (
                 <button
                   key={h.id}
                   onClick={() => selectSellAsset(h)}
                   className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl border text-left ${
-                    selected?.id === h.id
+                    isSelected
                       ? "bg-indigo-50 border-indigo-200"
                       : "bg-gray-50 border-gray-100 hover:bg-gray-100"
                   }`}
@@ -507,7 +676,8 @@ function SellSection(props) {
                       </div>
                     </div>
                   </div>
-                  <div className="text-right">
+                  <div className="flex flex-col items-end gap-1">
+                    {rowSpark && <Sparkline data={rowSpark} />}
                     <div className="font-semibold text-sm">
                       ${h.current_value?.toLocaleString()}
                     </div>
@@ -529,176 +699,204 @@ function SellSection(props) {
       </div>
 
       {selected && (
-        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 space-y-4">
-          <div className="flex justify-between items-center">
-            <div>
-              <p className="text-sm text-gray-500">Selected asset</p>
-              <p className="text-lg font-semibold">
-                {selected.name} ({selected.symbol}/USD)
-              </p>
-              <p className="text-xs text-gray-500 mt-1">
-                Available: {selected.quantity} pcs
-              </p>
-            </div>
-          </div>
+        <>
+          <PriceHistoryBlock
+            asset={selected}
+            historyData={historyData}
+            historyRange={historyRange}
+            setHistoryRange={setHistoryRange}
+            historyError={historyError}
+            historyLoading={historyLoading}
+            rangeOptions={rangeOptions}
+          />
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {(sellQuotes && sellQuotes.length
-              ? sellQuotes
-              : [{ source: "coincap" }, { source: "coingecko" }]
-            ).map((q, idx) => {
-              const src = q.source || (idx === 0 ? "coincap" : "coingecko");
-              const price = q.price;
-              return (
-                <button
-                  key={src}
-                  onClick={() => setSellSource(src)}
-                  className={`rounded-2xl p-3 border text-left ${
-                    sellSource === src
-                      ? "border-blue-500 bg-blue-50"
-                      : "border-gray-200"
-                  }`}
-                >
-                  <p className="font-semibold uppercase">
-                    {src.toUpperCase()}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {src === "coincap"
-                      ? "Cheaper now"
-                      : "Alternative price source"}
-                  </p>
-                  {price != null && (
-                    <p className="text-lg font-bold mt-2">
-                      $
-                      {price.toLocaleString(undefined, {
-                        maximumFractionDigits: 2,
-                      })}
+          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 space-y-4">
+            <div className="flex justify-between items-center">
+              <div>
+                <p className="text-sm text-gray-500">Selected asset</p>
+                <p className="text-lg font-semibold">
+                  {selected.name} ({selected.symbol}/USD)
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Available: {selected.quantity} pcs
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {(sellQuotes && sellQuotes.length
+                ? sellQuotes
+                : [{ source: "coincap" }, { source: "coingecko" }]
+              ).map((q, idx) => {
+                const src = q.source || (idx === 0 ? "coincap" : "coingecko");
+                const price = q.price;
+                return (
+                  <button
+                    key={src}
+                    onClick={() => setSellSource(src)}
+                    className={`rounded-2xl p-3 border text-left ${
+                      sellSource === src
+                        ? "border-blue-500 bg-blue-50"
+                        : "border-gray-200"
+                    }`}
+                  >
+                    <p className="font-semibold uppercase">
+                      {src.toUpperCase()}
                     </p>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="flex gap-3 text-sm">
-            <button
-              onClick={() => setSellMode("quantity")}
-              className={
-                "px-3 py-1 rounded-full border " +
-                (sellMode === "quantity"
-                  ? "bg-gray-900 text-white border-gray-900"
-                  : "bg-gray-100 text-gray-700 border-gray-200")
-              }
-            >
-              By quantity
-            </button>
-            <button
-              onClick={() => setSellMode("usd")}
-              className={
-                "px-3 py-1 rounded-full border " +
-                (sellMode === "usd"
-                  ? "bg-gray-900 text-white border-gray-900"
-                  : "bg-gray-100 text-gray-700 border-gray-200")
-              }
-            >
-              By USD amount
-            </button>
-          </div>
-
-          <div>
-            <label className="block text-sm text-gray-500 mb-1">
-              {sellMode === "quantity"
-                ? "Quantity to sell"
-                : "Amount in USD"}
-            </label>
-            <input
-              type="number"
-              min="0"
-              value={sellAmount}
-              onChange={(e) => setSellAmount(e.target.value)}
-              className="w-full p-3 rounded-2xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          {sellError && (
-            <div className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-2xl">
-              {sellError}
+                    <p className="text-xs text-gray-500 mt-1">
+                      {src === "coincap"
+                        ? "Cheaper now"
+                        : "Alternative price source"}
+                    </p>
+                    {price != null && (
+                      <p className="text-lg font-bold mt-2">
+                        $
+                        {price.toLocaleString(undefined, {
+                          maximumFractionDigits: 2,
+                        })}
+                      </p>
+                    )}
+                  </button>
+                );
+              })}
             </div>
-          )}
-          {sellMessage && (
-            <div className="text-sm text-green-700 bg-green-50 px-3 py-2 rounded-2xl">
-              {sellMessage}
-            </div>
-          )}
 
-          <div className="flex gap-3">
-            <button
-              onClick={openSellConfirm}
-              disabled={!sellAmount || sellLoading}
-              className="flex-1 py-3 rounded-2xl bg-red-600 text-white font-semibold disabled:opacity-50"
-            >
-              Sell now
-            </button>
+            <div className="flex gap-3 text-sm">
+              <button
+                onClick={() => setSellMode("quantity")}
+                className={
+                  "px-3 py-1 rounded-full border " +
+                  (sellMode === "quantity"
+                    ? "bg-gray-900 text-white border-gray-900"
+                    : "bg-gray-100 text-gray-700 border-gray-200")
+                }
+              >
+                By quantity
+              </button>
+              <button
+                onClick={() => setSellMode("usd")}
+                className={
+                  "px-3 py-1 rounded-full border " +
+                  (sellMode === "usd"
+                    ? "bg-gray-900 text-white border-gray-900"
+                    : "bg-gray-100 text-gray-700 border-gray-200")
+                }
+              >
+                By USD amount
+              </button>
+            </div>
+
+            <div>
+              <label className="block text-sm text-gray-500 mb-1">
+                {sellMode === "quantity"
+                  ? "Quantity to sell"
+                  : "Amount in USD"}
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={sellAmount}
+                onChange={(e) => setSellAmount(e.target.value)}
+                className="w-full p-3 rounded-2xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            {sellError && (
+              <div className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-2xl">
+                {sellError}
+              </div>
+            )}
+            {sellMessage && (
+              <div className="text-sm text-green-700 bg-green-50 px-3 py-2 rounded-2xl">
+                {sellMessage}
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={openSellConfirm}
+                disabled={!sellAmount || sellLoading}
+                className="flex-1 py-3 rounded-2xl bg-red-600 text-white font-semibold disabled:opacity-50"
+              >
+                Sell now
+              </button>
+            </div>
           </div>
-        </div>
+        </>
       )}
+    </div>
+  );
+}
 
-      {confirmVisible && sellPreview && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-3xl p-6 w-full max-w-md space-y-4">
-            <h2 className="text-lg font-bold text-gray-900">
-              Confirm sell
-            </h2>
-            <p className="text-sm text-gray-600">
-              Asset:{" "}
-              <span className="font-semibold">
-                {sellPreview.name} ({sellPreview.symbol})
-              </span>
-            </p>
-            <p className="text-sm text-gray-600">
-              Quantity:{" "}
-              <span className="font-semibold">
-                {sellPreview.quantity} of{" "}
-                {sellPreview.available_quantity}
-              </span>
-            </p>
-            <p className="text-sm text-gray-600">
-              Unit price:{" "}
-              <span className="font-semibold">
-                ${sellPreview.unit_price.toFixed(2)}
-              </span>
-            </p>
-            <p className="text-sm text-gray-600">
-              You will receive:{" "}
-              <span className="font-semibold text-green-700">
-                ${sellPreview.proceeds.toFixed(2)}
-              </span>
-            </p>
-            <p className="text-xs text-gray-500">
-              You can confirm in {confirmCountdown} seconds.
-            </p>
+function PriceHistoryBlock({
+  asset,
+  historyData,
+  historyRange,
+  setHistoryRange,
+  historyError,
+  historyLoading,
+  rangeOptions,
+}) {
+  if (!asset || !historyData.length) return null;
 
-            <div className="flex gap-3 pt-2">
-              <button
-                onClick={onCancel}
-                className="flex-1 py-2 rounded-2xl border border-gray-300 text-gray-700 font-semibold"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={onConfirm}
-                disabled={confirmCountdown > 0 || sellLoading}
-                className="flex-1 py-2 rounded-2xl bg-red-600 text-white font-semibold disabled:opacity-50"
-              >
-                {confirmCountdown > 0
-                  ? `Confirm (${confirmCountdown})`
-                  : sellLoading
-                  ? "Processing..."
-                  : "Confirm sell"}
-              </button>
-            </div>
-          </div>
+  return (
+    <div className="bg-slate-900 rounded-3xl p-4 space-y-3 shadow-sm">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold text-white">
+          {asset.name} price
+        </p>
+        <div className="flex gap-1 text-xs">
+          {rangeOptions.map((r) => (
+            <button
+              key={r.value}
+              onClick={() => setHistoryRange(r.value)}
+              className={
+                "px-2 py-1 rounded-full " +
+                (historyRange === r.value
+                  ? "bg-white text-slate-900"
+                  : "bg-slate-800 text-slate-200")
+              }
+            >
+              {r.label}
+            </button>
+          ))}
         </div>
+      </div>
+      {historyError && (
+        <p className="text-xs text-red-400">{historyError}</p>
+      )}
+      <div className="h-56">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={historyData}>
+            <XAxis dataKey="time" hide />
+            <YAxis domain={["dataMin", "dataMax"]} hide />
+            <Tooltip
+              contentStyle={{
+                fontSize: "0.75rem",
+                backgroundColor: "rgba(15,23,42,0.9)",
+                borderRadius: "0.75rem",
+                border: "1px solid rgba(148,163,184,0.4)",
+              }}
+              labelStyle={{ color: "#e5e7eb" }}
+              itemStyle={{ color: "#22c55e" }}
+              formatter={(value) => [
+                `$${Number(value).toFixed(2)}`,
+                "Price",
+              ]}
+              labelFormatter={(label) => label}
+            />
+            <Line
+              type="monotone"
+              dataKey="price"
+              stroke="#22c55e"
+              strokeWidth={2}
+              dot={false}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+      {historyLoading && (
+        <p className="text-xs text-slate-300">Loading history…</p>
       )}
     </div>
   );

@@ -45,7 +45,6 @@ function HeaderNavLink({ to, label }) {
 
 function Layout({ children }) {
   const navigate = useNavigate();
-  const location = useLocation();
 
   const handleLogout = async () => {
     await api.logout();
@@ -54,14 +53,16 @@ function Layout({ children }) {
 
   return (
     <div className="min-h-screen pb-16 md:pb-0 bg-gray-50 text-gray-900">
-      {/* Header: логотип + меню + logout */}
       <header className="bg-white shadow-sm sticky top-0 z-10 px-6 py-3 flex justify-between items-center">
-        <div className="flex items-center gap-2">
+        <Link
+          to="/"
+          className="flex items-center gap-2 cursor-pointer select-none"
+        >
           <div className="w-8 h-8 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center font-bold">
             C
           </div>
           <span className="font-bold text-lg tracking-tight">Comoney</span>
-        </div>
+        </Link>
 
         <div className="hidden md:flex items-center gap-6">
           <HeaderNavLink to="/" label="Home" />
@@ -77,7 +78,6 @@ function Layout({ children }) {
           </button>
         </div>
 
-        {/* На мобильном только кнопка logout, навигация снизу */}
         <button
           onClick={handleLogout}
           className="md:hidden p-2 text-gray-500 hover:text-red-600 transition"
@@ -89,7 +89,6 @@ function Layout({ children }) {
 
       <main className="pt-4">{children}</main>
 
-      {/* Bottom nav — только мобильный */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around p-2 md:hidden z-20">
         <BottomNavItem
           to="/"

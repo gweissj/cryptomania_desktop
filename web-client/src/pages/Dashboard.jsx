@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { RefreshCw } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
+import Sparkline from "../components/Sparkline";
 
 export default function Dashboard() {
   const [dashboard, setDashboard] = useState(null);
@@ -16,10 +17,15 @@ export default function Dashboard() {
     setError("");
     try {
       const dash = await api.getDashboard();
+      const movers = (dash.market_movers || [])
+        .slice()
+        .sort(
+          (a, b) =>
+            (b.change_24h_pct || 0) - (a.change_24h_pct || 0)
+        );
       setDashboard(dash);
-      setMarketMovers(dash.market_movers || []);
+      setMarketMovers(movers);
     } catch (e) {
-      console.error(e);
       setError(e.message || "Failed to load dashboard");
     } finally {
       setLoading(false);
@@ -68,7 +74,6 @@ export default function Dashboard() {
   const d = dashboard || {};
   const totalPnl = Number(d.total_pnl ?? 0);
   const totalPnlPct = Number(d.total_pnl_pct ?? 0);
-
   const pnlChipClass =
     totalPnlPct >= 0
       ? "bg-green-100 text-green-700"
@@ -76,7 +81,6 @@ export default function Dashboard() {
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
-      {/* Заголовок + ручной refresh */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
         <button
@@ -88,7 +92,6 @@ export default function Dashboard() {
         </button>
       </div>
 
-      {/* Баланс портфеля */}
       <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 md:p-8">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
@@ -141,7 +144,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Market Movers */}
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-bold text-gray-900">Market Movers</h2>
@@ -184,7 +186,7 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                <div className="flex items-baseline justify-between mb-1">
+                <div className="flex items-baseline justify-between mb-2">
                   <p className="text-2xl font-bold">
                     $
                     {asset.current_price?.toLocaleString("en-US", {
@@ -203,16 +205,18 @@ export default function Dashboard() {
                     {asset.change_24h_pct.toFixed(2)}%
                   </p>
                 </div>
-                <p className="text-xs text-white/80 mt-2">
-                  24h Vol. {asset.volume_24h?.toLocaleString()}
-                </p>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-white/80">
+                    24h Vol. {asset.volume_24h?.toLocaleString()}
+                  </p>
+                  <Sparkline data={asset.sparkline} />
+                </div>
               </div>
             ))}
           </div>
         )}
       </section>
 
-      {/* Portfolio — PnL по каждой монете vs внесённая сумма */}
       <section className="space-y-3 pb-10">
         <h2 className="text-xl font-bold text-gray-900">Portfolio</h2>
 

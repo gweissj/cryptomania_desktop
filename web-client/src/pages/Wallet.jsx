@@ -5,7 +5,9 @@ import { useNavigate } from "react-router-dom";
 export default function Wallet() {
   const [data, setData] = useState(null);
   const [amount, setAmount] = useState("");
+  const [withdrawAmount, setWithdrawAmount] = useState("");
   const [loading, setLoading] = useState(false);
+  const [withdrawing, setWithdrawing] = useState(false);
   const [error, setError] = useState("");
   const navigate = useNavigate();
 
@@ -38,6 +40,21 @@ export default function Wallet() {
     }
   };
 
+  const handleWithdraw = async () => {
+    if (!withdrawAmount) return;
+    setWithdrawing(true);
+    setError("");
+    try {
+      const res = await api.withdraw(withdrawAmount);
+      setData(res);
+      setWithdrawAmount("");
+    } catch (e) {
+      setError(e.message || "Withdraw failed");
+    } finally {
+      setWithdrawing(false);
+    }
+  };
+
   if (!data) {
     return <div className="p-8 text-gray-500">Loading wallet…</div>;
   }
@@ -60,7 +77,6 @@ export default function Wallet() {
         )}
       </div>
 
-      {/* Баланс портфеля */}
       <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <p className="text-gray-500">Portfolio Balance</p>
@@ -92,7 +108,6 @@ export default function Wallet() {
         </div>
       </div>
 
-      {/* Депозит */}
       <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 space-y-4">
         <h3 className="font-semibold text-gray-800">Deposit USD</h3>
         <div className="flex flex-col sm:flex-row gap-3 max-w-md">
@@ -114,7 +129,27 @@ export default function Wallet() {
         </div>
       </div>
 
-      {/* Holdings: PnL vs внесённой суммы */}
+      <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 space-y-4">
+        <h3 className="font-semibold text-gray-800">Withdraw USD</h3>
+        <div className="flex flex-col sm:flex-row gap-3 max-w-md">
+          <input
+            type="number"
+            min="1"
+            value={withdrawAmount}
+            onChange={(e) => setWithdrawAmount(e.target.value)}
+            placeholder="Amount"
+            className="flex-1 p-3 rounded-2xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <button
+            onClick={handleWithdraw}
+            disabled={withdrawing || !withdrawAmount}
+            className="px-6 py-3 rounded-2xl bg-red-600 text-white font-semibold disabled:opacity-50"
+          >
+            {withdrawing ? "..." : "Withdraw"}
+          </button>
+        </div>
+      </div>
+
       <div className="space-y-3 pb-10">
         <h3 className="font-semibold text-gray-800">Holdings</h3>
         {data.portfolio.length === 0 ? (
