@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { useNavigate } from "react-router-dom";
+import Sparkline from "../components/Sparkline";
 
 export default function Market() {
   const [assets, setAssets] = useState([]);
@@ -14,7 +15,13 @@ export default function Market() {
     setError("");
     try {
       const data = await api.getAssets({ search, limit: 50 });
-      setAssets(data || []);
+      const sorted = (data || [])
+        .slice()
+        .sort(
+          (a, b) =>
+            (b.change_24h_pct || 0) - (a.change_24h_pct || 0)
+        );
+      setAssets(sorted);
     } catch (e) {
       setError(e.message || "Failed to load market assets");
     } finally {
@@ -86,23 +93,26 @@ export default function Market() {
                 </div>
               </div>
             </div>
-            <div className="text-right">
-              <div className="font-semibold">
-                $
-                {asset.current_price?.toLocaleString(undefined, {
-                  maximumFractionDigits: 2,
-                })}
-              </div>
-              <div
-                className={
-                  "text-xs mt-1 " +
-                  (asset.change_24h_pct >= 0
-                    ? "text-green-500"
-                    : "text-red-500")
-                }
-              >
-                {asset.change_24h_pct >= 0 ? "+" : ""}
-                {asset.change_24h_pct.toFixed(2)}%
+            <div className="flex items-center gap-4">
+              <Sparkline data={asset.sparkline} />
+              <div className="text-right">
+                <div className="font-semibold">
+                  $
+                  {asset.current_price?.toLocaleString(undefined, {
+                    maximumFractionDigits: 2,
+                  })}
+                </div>
+                <div
+                  className={
+                    "text-xs mt-1 " +
+                    (asset.change_24h_pct >= 0
+                      ? "text-green-500"
+                      : "text-red-500")
+                  }
+                >
+                  {asset.change_24h_pct >= 0 ? "+" : ""}
+                  {asset.change_24h_pct.toFixed(2)}%
+                </div>
               </div>
             </div>
           </button>
