@@ -14,16 +14,25 @@ export default function Market() {
     setLoading(true);
     setError("");
     try {
-      const data = await api.getAssets({ search, limit: 50 });
+      let data = [];
+      if (search.trim()) {
+        data = await api.getAssets({ search, limit: 50 });
+      } else {
+        data = await api.getMarketMovers(12);
+      }
+
       const sorted = (data || [])
         .slice()
         .sort(
-          (a, b) =>
-            (b.change_24h_pct || 0) - (a.change_24h_pct || 0)
+          (a, b) => (b.change_24h_pct || 0) - (a.change_24h_pct || 0)
         );
       setAssets(sorted);
+      if (!sorted.length) {
+        setError("Не найдено активов. Попробуйте другой запрос.");
+      }
     } catch (e) {
-      setError(e.message || "Failed to load market assets");
+      setAssets([]);
+      setError(e.message || "Не удалось загрузить активы");
     } finally {
       setLoading(false);
     }
@@ -31,6 +40,7 @@ export default function Market() {
 
   useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const onSubmit = (e) => {
@@ -61,11 +71,9 @@ export default function Market() {
       </form>
 
       {loading && (
-        <p className="text-gray-500 text-sm">Loading assets…</p>
+        <p className="text-gray-500 text-sm">Загружаем рынок...</p>
       )}
-      {error && (
-        <p className="text-red-600 text-sm">{error}</p>
-      )}
+      {error && <p className="text-red-600 text-sm">{error}</p>}
 
       <div className="space-y-3">
         {assets.map((asset) => (

@@ -12,6 +12,13 @@ import {
 import Sparkline from "../components/Sparkline";
 import { createPortal } from "react-dom";
 
+const isWrappedLikeAsset = (asset) => {
+  const text = `${asset?.name || ""} ${asset?.symbol || ""}`.toLowerCase();
+  return ["wrapped", "bridged", "staked", "pegged"].some((kw) =>
+    text.includes(kw)
+  );
+};
+
 export default function Trade() {
   const [mode, setMode] = useState("buy");
 
@@ -45,6 +52,7 @@ export default function Trade() {
   const [historyRange, setHistoryRange] = useState(1);
   const [historyError, setHistoryError] = useState("");
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [assetsLoading, setAssetsLoading] = useState(true);
 
   const location = useLocation();
   const initialAssetId = location.state?.assetId || null;
@@ -86,10 +94,25 @@ export default function Trade() {
 
   const loadData = async () => {
     try {
-      const [assetsData, sellOverview] = await Promise.all([
-        api.getAssets({ limit: 30 }),
-        api.getSellOverview(),
-      ]);
+      setAssetsLoading(true);
+      setBuyError("");
+
+      let assetsData = [];
+      try {
+        assetsData = await api.getMarketMovers(20);
+      } catch {
+        // If market-movers fails (e.g. backend limit validation), fall back to full assets list.
+        assetsData = [];
+      }
+
+      if (!assetsData || assetsData.length === 0) {
+        assetsData = await api.getAssets({ limit: 20 });
+      }
+
+      // Hide wrapped/bridged/staked/pegged assets from the buy list.
+      assetsData = (assetsData || []).filter((a) => !isWrappedLikeAsset(a));
+
+      const sellOverview = await api.getSellOverview();
 
       setAssets(assetsData || []);
       setSellHoldings(sellOverview?.holdings || []);
@@ -108,9 +131,17 @@ export default function Trade() {
           await selectSellAsset(foundSell);
           setMode("sell");
         }
+      } else if (!selectedBuy && assetsData && assetsData.length > 0) {
+        await selectBuyAsset(assetsData[0], { silent: true });
+      }
+
+      if (!assetsData?.length) {
+        setBuyError("Не удалось загрузить список активов.");
       }
     } catch (e) {
       setBuyError(e.message || "Failed to load trade data");
+    } finally {
+      setAssetsLoading(false);
     }
   };
 
@@ -306,6 +337,7 @@ export default function Trade() {
 
       {mode === "buy" ? (
         <BuySection
+          assetsLoading={assetsLoading}
           assets={filteredBuyAssets}
           buySearch={buySearch}
           setBuySearch={setBuySearch}
@@ -422,6 +454,7 @@ export default function Trade() {
 
 function BuySection(props) {
   const {
+    assetsLoading,
     assets,
     buySearch,
     setBuySearch,
@@ -459,56 +492,66 @@ function BuySection(props) {
           onChange={(e) => setBuySearch(e.target.value)}
           className="w-full mb-4 p-3 rounded-2xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-blue-500"
         />
-        <div className="space-y-2 max-h-80 overflow-y-auto">
-          {assets.map((asset) => {
-            const isSelected = selected?.id === asset.id;
-            const rowSpark = isSelected && sparkData.length ? sparkData : null;
+        {assetsLoading ? (
+          <p className="text-sm text-gray-500 px-1 py-2">
+            Загружаем активы...
+          </p>
+        ) : assets.length === 0 ? (
+          <p className="text-sm text-gray-500 px-1 py-2">
+            Нет доступных активов. Попробуйте обновить страницу или зайти позже.
+          </p>
+        ) : (
+          <div className="space-y-2 max-h-80 overflow-y-auto">
+            {assets.map((asset) => {
+              const isSelected = selected?.id === asset.id;
+              const rowSpark = isSelected && sparkData.length ? sparkData : null;
 
-            return (
-              <button
-                key={asset.id}
-                onClick={() => selectBuyAsset(asset)}
-                className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl border text-left ${
-                  isSelected
-                    ? "bg-indigo-50 border-indigo-200"
-                    : "bg-gray-50 border-gray-100 hover:bg-gray-100"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center font-semibold text-indigo-700">
-                    {asset.symbol?.[0]}
-                  </div>
-                  <div>
-                    <div className="font-semibold text-sm">{asset.name}</div>
-                    <div className="text-xs text-gray-500">
-                      {asset.symbol}/USD
+              return (
+                <button
+                  key={asset.id}
+                  onClick={() => selectBuyAsset(asset)}
+                  className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl border text-left ${
+                    isSelected
+                      ? "bg-indigo-50 border-indigo-200"
+                      : "bg-gray-50 border-gray-100 hover:bg-gray-100"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center font-semibold text-indigo-700">
+                      {asset.symbol?.[0]}
+                    </div>
+                    <div>
+                      <div className="font-semibold text-sm">{asset.name}</div>
+                      <div className="text-xs text-gray-500">
+                        {asset.symbol}/USD
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div className="flex flex-col items-end gap-1">
-                  {rowSpark && <Sparkline data={rowSpark} />}
-                  <div className="font-semibold text-sm">
-                    $
-                    {asset.current_price?.toLocaleString(undefined, {
-                      maximumFractionDigits: 2,
-                    })}
+                  <div className="flex flex-col items-end gap-1">
+                    {rowSpark && <Sparkline data={rowSpark} />}
+                    <div className="font-semibold text-sm">
+                      $
+                      {asset.current_price?.toLocaleString(undefined, {
+                        maximumFractionDigits: 2,
+                      })}
+                    </div>
+                    <div
+                      className={
+                        "text-xs " +
+                        (asset.change_24h_pct >= 0
+                          ? "text-green-500"
+                          : "text-red-500")
+                      }
+                    >
+                      {asset.change_24h_pct >= 0 ? "+" : ""}
+                      {asset.change_24h_pct.toFixed(2)}%
+                    </div>
                   </div>
-                  <div
-                    className={
-                      "text-xs " +
-                      (asset.change_24h_pct >= 0
-                        ? "text-green-500"
-                        : "text-red-500")
-                    }
-                  >
-                    {asset.change_24h_pct >= 0 ? "+" : ""}
-                    {asset.change_24h_pct.toFixed(2)}%
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {selected && (
@@ -896,8 +939,9 @@ function PriceHistoryBlock({
         </ResponsiveContainer>
       </div>
       {historyLoading && (
-        <p className="text-xs text-slate-300">Loading history…</p>
+        <p className="text-xs text-slate-300">Loading history...</p>
       )}
     </div>
   );
 }
+
