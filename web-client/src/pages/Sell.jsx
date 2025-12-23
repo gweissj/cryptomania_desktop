@@ -1,12 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
-import {
-  AlertCircle,
-  CheckCircle2,
-  PauseCircle,
-  PhoneCall,
-  PlayCircle,
-} from "lucide-react";
+import { AlertCircle, CheckCircle2, Info } from "lucide-react";
 
 const POLL_INTERVAL_MS = 5000;
 
@@ -210,7 +204,7 @@ export default function Sell() {
     localStorage.setItem("access_token", token);
     setStatus({
       type: "success",
-      text: "Токен с мобильного сохранен. Продолжаем работу.",
+      text: "Токен из мобильного приложения сохранен. Авторизация обновлена.",
     });
     await acknowledge(command?.id, "ACKNOWLEDGED");
     await loadOverview();
@@ -220,7 +214,7 @@ export default function Sell() {
     await loadOverview();
     setStatus({
       type: "info",
-      text: "Получена команда с телефона: дашборд обновлен.",
+      text: "Данные обновлены по запросу с мобильного приложения.",
     });
     await acknowledge(command?.id, "ACKNOWLEDGED");
   };
@@ -243,7 +237,7 @@ export default function Sell() {
 
     setStatus({
       type: "info",
-      text: `Запрос с телефона: продаем ${assetId} (${source}).`,
+      text: `Получена команда из мобильного приложения на продажу: ${assetId} (${source}).`,
     });
 
     try {
@@ -261,7 +255,7 @@ export default function Sell() {
       });
       setStatus({
         type: "success",
-        text: `Продажа выполнена: ${formatQty(res.quantity)} ${res.symbol} → $${formatMoney(
+        text: `Продажа выполнена: ${formatQty(res.quantity)} ${res.symbol} -> $${formatMoney(
           res.received
         )}.`,
       });
@@ -271,7 +265,8 @@ export default function Sell() {
       setStatus({
         type: "error",
         text:
-          e.message || "Не удалось выполнить продажу по команде с телефона.",
+          e.message ||
+          "Не удалось выполнить продажу по команде из мобильного приложения.",
       });
       await acknowledge(command?.id, "FAILED");
     }
@@ -281,9 +276,15 @@ export default function Sell() {
     const payload = command?.payload || {};
     setActiveCommand(command);
     setIsListening(false);
+    setSellMessage("");
+    setSellError("");
+    setSellPreview(null);
+    setSellPayload(null);
+    setSellAmount("");
+    setSellMode("quantity");
     setStatus({
       type: "info",
-      text: "Получен запрос на продажу с мобильного. Заполните форму ниже.",
+      text: "Получен запрос на продажу из мобильного приложения. Проверьте параметры и подтвердите.",
     });
 
     if (payload.source) {
@@ -299,6 +300,19 @@ export default function Sell() {
       setSellMode("usd");
       setSellAmount(String(payload.suggested_amount_usd));
     }
+  };
+
+  const finalizeActiveCommand = async (statusValue) => {
+    const command = activeCommand;
+    if (!command || command.action !== "REQUEST_DESKTOP_SELL") return;
+    await acknowledge(command.id, statusValue);
+    setActiveCommand(null);
+    setIsListening(true);
+    setSellPreview(null);
+    setSellPayload(null);
+    setSellAmount("");
+    setSellMessage("");
+    setSellError("");
   };
 
   const buildSellPayload = () => {
@@ -352,24 +366,33 @@ export default function Sell() {
     setSellError("");
     try {
       const res = await api.executeSell(payload);
-      setSellMessage(
-        `Продано ${formatQty(res.quantity)} ${res.symbol} на $${formatMoney(
-          res.received
-        )}. Баланс: $${formatMoney(res.cash_balance)}.`
-      );
+      const confirmation = `Продано ${formatQty(
+        res.quantity
+      )} ${res.symbol} на $${formatMoney(res.received)}. Баланс: $${formatMoney(
+        res.cash_balance
+      )}.`;
+      setSellMessage(confirmation);
       setSellAmount("");
       setSellPreview(null);
       setSellPayload(null);
       await loadOverview();
-
-      if (activeCommand && activeCommand.action === "REQUEST_DESKTOP_SELL") {
-        await acknowledge(activeCommand.id, "ACKNOWLEDGED");
-        setActiveCommand(null);
+      if (activeCommand?.action === "REQUEST_DESKTOP_SELL") {
+        setStatus({
+          type: "success",
+          text: `${confirmation} Прослушивание возобновлено.`,
+        });
       }
+      await finalizeActiveCommand("ACKNOWLEDGED");
     } catch (e) {
       setSellError(e.message || "Не удалось выполнить продажу.");
-      if (activeCommand && activeCommand.action === "REQUEST_DESKTOP_SELL") {
-        await acknowledge(activeCommand.id, "FAILED");
+      if (activeCommand?.action === "REQUEST_DESKTOP_SELL") {
+        setStatus({
+          type: "error",
+          text:
+            e.message ||
+            "Не удалось выполнить продажу. Проверьте данные и повторите.",
+        });
+        await finalizeActiveCommand("FAILED");
       }
     } finally {
       setSellLoading(false);
@@ -378,35 +401,31 @@ export default function Sell() {
 
   const cancelActiveCommand = async () => {
     if (!activeCommand) return;
-    await acknowledge(activeCommand.id, "FAILED");
-    setActiveCommand(null);
+    setStatus({
+      type: "info",
+      text: "Запрос отклонен. Прослушивание возобновлено.",
+    });
+    await finalizeActiveCommand("FAILED");
   };
 
   const listeningBanner = isListening ? (
-    <div className="bg-white border border-indigo-100 rounded-3xl shadow-sm p-6 flex flex-col gap-2">
+    <div className="bg-white border border-gray-200 rounded-3xl shadow-sm p-6 space-y-3">
       <div className="flex items-start gap-3">
-        <PhoneCall className="text-indigo-700" size={24} />
-        <div>
-          <p className="text-lg font-semibold text-indigo-900">
-            ожидание запроса на продажу валюты
+        <div className="mt-1 h-2.5 w-2.5 rounded-full bg-emerald-500" />
+        <div className="space-y-1">
+          <p className="text-lg font-semibold text-gray-900">
+            Ожидание запроса на продажу
           </p>
           <p className="text-sm text-gray-600">
-            ПК-клиент слушает сервер каждые 5 секунд и автоматически
-            исполняет команды, отправленные с телефона.
+            Форма продажи появится автоматически после получения запроса.
+          </p>
+          <p className="text-sm text-gray-600">
+            Прослушивание приостанавливается только на время исполнения подтвержденных запросов.
           </p>
           {pollError && (
             <p className="text-sm text-red-600 mt-1">{pollError}</p>
           )}
         </div>
-      </div>
-      <div className="flex gap-3 pt-2">
-        <button
-          onClick={() => setIsListening(false)}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-red-50 text-red-700 border border-red-200 font-semibold"
-        >
-          <PauseCircle size={18} />
-          Остановить прослушку
-        </button>
       </div>
     </div>
   ) : null;
@@ -416,31 +435,24 @@ export default function Sell() {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
-            Продажа через ПК-клиент
+            Продажа через мобильное приложение
           </h1>
           <p className="text-sm text-gray-600">
-            Слушаем команды с мобильного и позволяем продавать вручную при
-            остановке прослушки.
+            ПК-клиент принимает подтвержденные запросы на продажу из мобильного приложения и выполняет их автоматически.
           </p>
         </div>
-        <button
-          onClick={() => setIsListening((v) => !v)}
-          className={`inline-flex items-center gap-2 px-4 py-2 rounded-2xl font-semibold border ${
-            isListening
-              ? "bg-red-50 text-red-700 border-red-200"
-              : "bg-indigo-50 text-indigo-900 border-indigo-200"
-          }`}
-        >
-          {isListening ? (
-            <>
-              <PauseCircle size={18} /> Остановить прослушку
-            </>
-          ) : (
-            <>
-              <PlayCircle size={18} /> Снова слушать сервер
-            </>
-          )}
-        </button>
+        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl border border-gray-200 bg-white text-sm font-semibold text-gray-800">
+          <span
+            className={`h-2 w-2 rounded-full ${
+              isListening ? "bg-emerald-500" : "bg-amber-500"
+            }`}
+          />
+          <span>
+            {isListening
+              ? "Активно, ожидание команды"
+              : "Обработка запроса на продажу валюты"}
+          </span>
+        </div>
       </div>
 
       {status && (
@@ -458,7 +470,7 @@ export default function Sell() {
           ) : status.type === "success" ? (
             <CheckCircle2 size={18} />
           ) : (
-            <PhoneCall size={18} />
+            <Info size={18} />
           )}
           <span className="text-sm">{status.text}</span>
         </div>
@@ -469,26 +481,19 @@ export default function Sell() {
       {!isListening && (
         <div className="space-y-3">
           {activeCommand && (
-            <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 flex flex-col gap-2">
-              <div className="flex items-center gap-2 text-indigo-900 font-semibold">
-                <PhoneCall size={18} /> Команда с мобильного ждет исполнения
-              </div>
-              <p className="text-sm text-indigo-800">
-                Action: {activeCommand.action}. После продажи отправим
-                подтверждение обратно.
+            <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 space-y-2">
+              <p className="text-sm font-semibold text-gray-900">
+                Запрос на продажу получен из мобильного приложения
+              </p>
+              <p className="text-sm text-gray-600">
+                Запрос на продажу создан в мобильном приложении. После подтверждения статус автоматически отправится в мобильное приложение.
               </p>
               <div className="flex gap-2">
                 <button
                   onClick={cancelActiveCommand}
-                  className="px-3 py-2 rounded-xl border border-indigo-300 text-indigo-900 text-sm"
+                  className="px-3 py-2 rounded-xl border border-gray-300 text-gray-800 text-sm"
                 >
                   Отклонить запрос
-                </button>
-                <button
-                  onClick={() => setIsListening(false)}
-                  className="px-3 py-2 rounded-xl bg-indigo-600 text-white text-sm"
-                >
-                  Продолжить ручную продажу
                 </button>
               </div>
             </div>
